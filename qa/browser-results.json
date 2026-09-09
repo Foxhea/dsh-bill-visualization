@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "checks": [
+    "empty state",
+    "live refresh",
+    "unknown rates",
+    "collapsed diagnostics",
+    "large token formatting",
+    "rate form save",
+    "repricing",
+    "official price import",
+    "idempotent import",
+    "peak schedule retained in editor",
+    "all-time range",
+    "CSV download",
+    "mobile overflow",
+    "sidebar placement above settings",
+    "collapsed sidebar",
+    "sidebar remount without duplicate",
+    "iframe dashboard",
+    "dialog close",
+    "no browser errors"
+  ],
+  "syntheticData": true
+}

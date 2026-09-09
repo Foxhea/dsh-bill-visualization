@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "checks": [
+    "real sidebar DOM slot",
+    "above settings geometry",
+    "authenticated iframe",
+    "official preset save",
+    "Escape inside iframe",
+    "real sidebar collapse/expand"
+  ],
+  "unrelatedHostPageErrors": []
+}
