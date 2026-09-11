@@ -2,6 +2,10 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
 
 /* UI only consumes this plugin's authenticated HTTP endpoints. */
 (() => {
+  // The launcher hands over the host's resolved theme; standalone visits keep
+  // the stylesheet's prefers-color-scheme default.
+  const requested = new URLSearchParams(location.search).get('theme');
+  if (requested === 'dark' || requested === 'light') document.documentElement.dataset.theme = requested;
   const $ = id => document.getElementById(id), number = n => new Intl.NumberFormat('zh-CN').format(n);
   const compact = n => new Intl.NumberFormat('en-US', { notation:'compact', maximumFractionDigits:2 }).format(n);
   let data, rates, editIndex = -1, sessionLimit = 50, busy = false, dirty = false, rangeInitialized = false;

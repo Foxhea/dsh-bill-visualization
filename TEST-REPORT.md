@@ -1,6 +1,10 @@
 # 验证记录
 
-日期：2026-09-09。插件：`dsh-bill-visualization@0.1.2`（重命名自 `dsh-token-ledger`，含官方 Flash 系列 2026-09-10 调价快照更新）。
+日期：2026-09-09。插件：`dsh-bill-visualization@0.1.3`（0.1.2 起自 `dsh-token-ledger` 更名，含官方 Flash 系列 2026-09-10 调价快照更新；0.1.3 为界面改版）。
+
+## 0.1.3 界面改版
+
+按 DeepSeek Harness 设计平台（`packages/client/ui-theme/src/styles/design-platform.css`）重做皮肤：中性蓝灰表面、近黑正文、单一 DeepSeek 蓝强调色（`rgb(65,118,230)`）、发丝边框、8–16px 圆角与宿主 `superellipse(1.5)` 圆角。侧栏入口与弹窗位于宿主文档内，直接读取宿主 `--dsw-*` 令牌，随宿主明暗主题自动切换；iframe 仪表盘由入口透传解析后的主题，独立访问时回退 `prefers-color-scheme`。演示截图由无头 Chrome 对合成数据重新生成（`qa/overview-demo.png`、`qa/overview-dark.png`、`qa/rates-demo.png`、`qa/mobile-demo.png`、`qa/sidebar-demo.png`、`qa/sidebar-dark.png`），并以像素采样确认不再含旧绿色主题（0 个绿色像素）。`qa/sidebar-real-harness.png` 与 `qa/official-prices-real-harness.png` 为 0.1.1 时期的真实宿主核验截图，保留作记录。
 
 ## 单元与 HTTP 集成
 

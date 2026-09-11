@@ -85,7 +85,7 @@ export async function apply(ctx, config = {}) {
     if (!validDate(from) || !validDate(to) || (from && to && from > to)) throw Object.assign(new Error('日期范围无效'), { status: 400 });
     const data = await reader.scan();
     return { ...summarize(data.sessions, store.current, { from, to, errors: data.errors }),
-      scanAt: data.at, pluginVersion: '0.1.2', targetHarness: '0.1.3-alpha.2' };
+      scanAt: data.at, pluginVersion: '0.1.3', targetHarness: '0.1.3-alpha.2' };
   }
 
   const handler = async (req, res) => {

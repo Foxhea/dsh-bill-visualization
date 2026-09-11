@@ -1,6 +1,6 @@
 {
   "name": "dsh-bill-visualization",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Local token & cost (bill) visualization dashboard plugin for DeepSeek Harness 0.1.3-alpha.2",
   "type": "module",
   "main": "src/index.js",

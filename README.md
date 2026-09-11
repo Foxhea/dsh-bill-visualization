@@ -13,14 +13,18 @@ A read-only host plugin (previously shipped as `dsh-token-ledger` / *Token Ledge
 
 | | |
 | --- | --- |
-| **Overview — usage & priced cost**<br/>本月/今日已定价费用、Token 构成、模型用量 | **Rate settings — official price import**<br/>官方价一键导入、峰谷费率、自定义路由 |
-| ![Overview](qa/overview-demo.png) | ![Rates](qa/rates-demo.png) |
-| **Sidebar entry in the real Harness host**<br/>真实宿主侧栏、设置上方的入口 | **Official prices page in the real host**<br/>真实宿主中的官方价导入页 |
-| ![Sidebar in real Harness](qa/sidebar-real-harness.png) | ![Official prices in real Harness](qa/official-prices-real-harness.png) |
-| **Narrow view**<br/>390px 窄屏不横向溢出 | |
-| ![Mobile](qa/mobile-demo.png) | |
+| **Overview — usage & priced cost (light)**<br/>本月/今日已定价费用、Token 构成、模型用量 | **Overview (dark)**<br/>跟随宿主深色主题 |
+| ![Overview](qa/overview-demo.png) | ![Overview dark](qa/overview-dark.png) |
+| **Rate settings — official price import**<br/>官方价一键导入、峰谷费率、自定义路由 | **Sidebar entry**<br/>设置上方的入口（浅色 / 深色） |
+| ![Rates](qa/rates-demo.png) | ![Sidebar](qa/sidebar-demo.png) |
+| **Narrow view**<br/>390px 窄屏不横向溢出 | **Sidebar (dark)**<br/>深色宿主中的入口 |
+| ![Mobile](qa/mobile-demo.png) | ![Sidebar dark](qa/sidebar-dark.png) |
 
-*`overview-demo.png` / `rates-demo.png` / `mobile-demo.png` use synthetic usage and example prices — not your data. The two “real Harness” screenshots were taken in an isolated test profile; no production sessions were read and no model was called (details in [TEST-REPORT.md](TEST-REPORT.md)).*
+*All screenshots above use synthetic usage and example prices — not your data. The sidebar captures run against a minimal mock host shell; `qa/sidebar-real-harness.png` and `qa/official-prices-real-harness.png` are 0.1.1-era captures taken inside a real Harness test profile (see [TEST-REPORT.md](TEST-REPORT.md)).*
+
+## Design
+
+The dashboard follows the DeepSeek Harness design platform (`packages/client/ui-theme/src/styles/design-platform.css`) rather than inventing a palette: neutral-bluish surfaces, near-black ink, one **DeepSeek-blue** accent, hairline borders and 8–16px radii with the host's superellipse corners. The sidebar entry and dialog render inside the host document and read the host's live `--dsw-*` tokens, so they follow the Harness theme (light or dark) automatically; the framed dashboard receives the resolved theme from the launcher and otherwise falls back to `prefers-color-scheme`.
 
 ## Features
 
@@ -38,7 +42,7 @@ Works with a DeepSeek Harness source checkout at the pinned release (`pnpm run d
 ```bash
 # stop the running harness first (Ctrl+C in its terminal)
 cd ~/deepseek-harness
-pnpm run dsh plugin --profile web add /path/to/dsh-bill-visualization-0.1.2.tgz
+pnpm run dsh plugin --profile web add /path/to/dsh-bill-visualization-0.1.3.tgz
 pnpm run dsh web
 ```
 
@@ -107,6 +111,13 @@ Optional browser QA: install Playwright, set `PLAYWRIGHT_PATH` (package path) an
 
 License: MIT. Independent implementation referencing DeepSeek Harness public interfaces.
 
+## Changelog
+
+- **0.1.3** — UI restyle on the Harness design tokens: DeepSeek-blue accent, neutral-bluish surfaces, automatic light/dark following the host theme.
+- **0.1.2** — renamed `dsh-token-ledger` → `dsh-bill-visualization`; official Flash-series price cut (2026-09-10) added to the snapshot; bilingual README with screenshots.
+- **0.1.1** — official rate import, weekday peak/off-peak billing, diagnostics panel.
+- **0.1.0** — first local Token/cost dashboard.
+
 ---
 
 ## 中文说明
@@ -114,7 +125,7 @@ License: MIT. Independent implementation referencing DeepSeek Harness public int
 **dsh-bill-visualization**（曾用包名 `dsh-token-ledger` / Token Ledger）是为 **DeepSeek Harness 0.1.3-alpha.2**（最新版，Node Web 模式）适配的本地 Token／费用统计插件：展示今日／本月已定价费用、Token 构成、按模型与会话汇总、CSV/JSON 导出，并可一键导入带工作日峰谷（北京 09:00–12:00、14:00–18:00 ×2、周末全天空闲）的 DeepSeek 官方人民币价。**只读**本地会话：不读 API 密钥、不上传对话、不写会话；只写自己的费率文件 `$DSH_HOME/dsh-bill-visualization/rates.json`。已随包携带 2026-09-10 12:00 生效的 Flash 系列新价（命中 0.02／未命中 1／输出 4，pro 未调价）。
 
 - 界面截图见上方（合成数据或隔离的真实宿主测试配置，非真实账单）。
-- 安装：`pnpm run dsh plugin --profile web add <dsh-bill-visualization-0.1.2.tgz>` → 重启 `pnpm run dsh web` → 侧栏「设置」上方出现 **Token / 费用** 入口（或直接访问 `/dsh-bill-visualization`）。从 0.1.x 升级会保留费率文件。
+- 安装：`pnpm run dsh plugin --profile web add <dsh-bill-visualization-0.1.3.tgz>` → 重启 `pnpm run dsh web` → 侧栏「设置」上方出现 **Token / 费用** 入口（或直接访问 `/dsh-bill-visualization`）。从 0.1.x 升级会保留费率文件。
 - 费率：官方直连默认路由 `deepseek`，点「一键导入官方价」；中转站填自己的价格；同路由不同生效时间可实现历史调价。
 - 计数口径与可选配置见上方英文节；卸载用 `pnpm run dsh plugin --profile web remove dsh-bill-visualization`。
 - 测试：`node --test tests/*.test.js`（36 项通过）。

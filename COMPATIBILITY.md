@@ -19,4 +19,4 @@
 
 版本范围刻意只声明 `0.1.3-alpha.2`。其他版本应核对上述接口后再使用。
 
-0.1.2 的侧栏入口依赖该版本的 `[data-slot="sidebar.settings"]` DOM 标记及其 Settings 区域、footer 父级结构，见 [SidebarRoot.tsx](https://github.com/deepseek-ai/deepseek-harness/blob/82a5fd61a7cf5c293cec4bdff68f455398d685e9/packages/client/ui-sidebar/src/client/SidebarRoot.tsx)。入口插入 Settings 区域之前；观察 footer 宽度适配收起状态，并在宿主重挂载后重新附着。独立 Shadow DOM 对话框挂在 body，避免被侧栏裁切。此方式没有导入 Harness 浏览器运行时，但 DOM 结构仍是版本兼容约束；找不到该标记时可使用独立 `/dsh-bill-visualization` 页面。
+0.1.3 的侧栏入口依赖该版本的 `[data-slot="sidebar.settings"]` DOM 标记及其 Settings 区域、footer 父级结构，见 [SidebarRoot.tsx](https://github.com/deepseek-ai/deepseek-harness/blob/82a5fd61a7cf5c293cec4bdff68f455398d685e9/packages/client/ui-sidebar/src/client/SidebarRoot.tsx)。入口插入 Settings 区域之前；观察 footer 宽度适配收起状态，并在宿主重挂载后重新附着。独立 Shadow DOM 对话框挂在 body，避免被侧栏裁切。此方式没有导入 Harness 浏览器运行时，但 DOM 结构仍是版本兼容约束；找不到该标记时可使用独立 `/dsh-bill-visualization` 页面。
