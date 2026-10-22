@@ -4,8 +4,8 @@
 
 A read-only host plugin (previously shipped as `dsh-token-ledger` / *Token Ledger*) that turns your local Harness session records into a usage and bill dashboard — priced cost for today and this month, token composition, per-model and per-session breakdowns, CSV/JSON export, and one-click import of the official DeepSeek CNY price snapshot with automatic weekday peak/off-peak billing.
 
-> **✅ 适配最新 Harness · Compatible with the latest DeepSeek Harness `0.1.3-alpha.2`**
-> Target release `dsh-v0.1.3-alpha.2` (Node **Web** mode). Verified against source commit `82a5fd61a7cf5c293cec4bdff68f455398d685e9` on Node `v22.23.1` — real Cordis activation, real `SessionPersistence` read, real login/401 gate, rate save and reprice all pass. Interface references in [COMPATIBILITY.md](COMPATIBILITY.md).
+> **✅ 适配最新 Harness · Compatible with the latest DeepSeek Harness `0.2.1-rc.2`**
+> Target release `dsh-v0.2.1-rc.2` (Node **Web** mode), plus `0.1.5-rc.2` and `0.1.3-alpha.2`. Reads session formats **v2–v4** (`session.v4.jsonl.zstd` in 0.2.1) and is forward-tolerant for newer generations. Interface references in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ---
 
@@ -34,15 +34,19 @@ The dashboard follows the DeepSeek Harness design platform (`packages/client/ui-
 - **Official DeepSeek CNY snapshot** bundled (see [Prices](#prices)) — no live fetch, no auto-update; add an older effective time to price history correctly.
 - CSV / JSON export, atomic rate-file writes, 401/403-gated local HTTP routes.
 - Peak/off-peak switching uses **Beijing time** regardless of display timezone; weekends are off-peak all day.
+- **Monthly budget bar** with a configurable alert threshold (amber near the limit, red past it) — display-only, it never blocks a call.
+- **Request-level audit log**: the newest 5,000 calls with per-call cost, plus a one-click calls CSV.
+- **Provider / model / workspace filters** that narrow the range, tables and call log (the calendar cards stay global, as they already did for the date range).
+- **Token ↔ cost chart toggle** and a **cache-savings** figure (cache-read tokens priced at the hit rate versus the miss rate).
 
 ## Installation
 
-Works with a DeepSeek Harness source checkout at the pinned release (`pnpm run dsh --version` → `0.1.3-alpha.2`):
+Works with a DeepSeek Harness source checkout (`pnpm run dsh --version` → `0.2.1-rc.2`, `0.1.5-rc.2`, or `0.1.3-alpha.2`):
 
 ```bash
 # stop the running harness first (Ctrl+C in its terminal)
 cd ~/deepseek-harness
-pnpm run dsh plugin --profile web add /path/to/dsh-bill-visualization-0.1.3.tgz
+pnpm run dsh plugin --profile web add /path/to/dsh-bill-visualization-0.2.0.tgz
 pnpm run dsh web
 ```
 
@@ -68,17 +72,20 @@ Uninstalling never deletes your rate file.
 3. **Relays / other routes**: click the detected provider/model chips and enter your own price per **1M tokens** (uncached input, cache-read, cache-write, output). If cache-write costs the same as normal input, enter the same price; only enter `0` when it is really free.
 4. Effective time defaults to 1970 so it covers all history; when a price changes, add a new row with the new effective time — old calls keep matching the old rate.
 
+A monthly budget and alert threshold can be set in the same panel; they are stored beside the rates (the `budget` key in `rates.json`) and only drive the hero-card progress bar.
+
 ### Prices
 
 Bundled official CNY snapshot (checked 2026-09-09; per 1M tokens, **off-peak**; weekday peak Beijing 09:00–12:00 & 14:00–18:00 = ×2):
 
 | Model | Input (cache miss) | Input (cache hit) | Output |
 | --- | --- | --- | --- |
+| deepseek-flash | 1 | 0.02 | 4 |
 | deepseek-v4-flash | 1 | 0.02 | 4 |
-| deepseek-v4-pro | 4.5 | 0.15 | 13.5 |
 | deepseek-v4-flash-vision-exp | 1 | 0.02 | 4 |
+| deepseek-v4-pro | 4.5 | 0.15 | 13.5 |
 
-The snapshot applies the **Flash-series** cut announced for **2026-09-10 12:00 Beijing** (official announcement, [IT之家](https://m.ithome.com/html/999953.htm) / [快科技](https://www.chinaz.com/2026/0909/1776003.shtml)); `deepseek-v4-pro` was not adjusted. Effective-from is `2026-09-10T04:00:00Z`; earlier calls need the rates that were actually in force (the page does not publish a full historical table). The official page lists no separate cache-write price, so this plugin estimates cache-write at the cache-miss input price. Image tokens are vendor-reported; the plugin adds nothing.
+The snapshot was checked on **2026-09-11**. `deepseek-flash` is the current Flash id (DeepSeek-V4.1-Flash); `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are retired ids that the API still accepts, served by V4.1-Flash and billed at the same Flash price. Effective-from is `2026-09-10T04:00:00Z` (the Flash price cut); earlier calls need the rates that were actually in force (the page publishes no full historical table). `deepseek-v4-pro` is unchanged for now — note the official plan to route `deepseek-v4-pro` to V4.1-Flash **and bill it at the Flash price from 2026-09-14 12:00 Beijing**; encode that as a `deepseek-v4-pro` row effective `2026-09-14T04:00:00Z` if you want the estimate to follow (the bundled snapshot stops at today's prices). The official page lists no separate cache-write price, so this plugin estimates cache-write at the cache-miss input price. Image tokens are vendor-reported; the plugin adds nothing.
 
 ## Counting semantics
 
@@ -88,6 +95,7 @@ The snapshot applies the **Flash-series** cut announced for **2026-09-10 12:00 B
 - Only currently retained sessions are counted; deleting a session removes it on the next scan (no permanent ledger in this version).
 - Costs are an **estimate from your configured rates** — not the vendor bill. Excluded: requests outside session logs, balance queries, plan monthly fees, taxes, search-tool extras, standalone summarization/titling.
 - Only rates that opt into the peak schedule are time-adjusted.
+- Provider/model/workspace filters narrow the range totals, tables and the call log; the today/month cards stay global. One snapshot returns at most the newest 5,000 calls (`callTotal` reports the full match count).
 
 ## Configuration
 
@@ -113,6 +121,8 @@ License: MIT. Independent implementation referencing DeepSeek Harness public int
 
 ## Changelog
 
+- **0.2.0** — budget bar, request-level audit log + CSV, provider/model/workspace filters, Token/cost chart toggle, cache-savings figure; reads session formats v2–v4 (0.2.1-rc.2) and adds the `deepseek-flash` price id.
+- **0.1.4** — read both released session formats (v2/v3) so 0.1.5-rc.2's `session.v3.jsonl.zstd` logs count again; target the 0.1.5-rc.2 interfaces.
 - **0.1.3** — UI restyle on the Harness design tokens: DeepSeek-blue accent, neutral-bluish surfaces, automatic light/dark following the host theme.
 - **0.1.2** — renamed `dsh-token-ledger` → `dsh-bill-visualization`; official Flash-series price cut (2026-09-10) added to the snapshot; bilingual README with screenshots.
 - **0.1.1** — official rate import, weekday peak/off-peak billing, diagnostics panel.
@@ -122,10 +132,10 @@ License: MIT. Independent implementation referencing DeepSeek Harness public int
 
 ## 中文说明
 
-**dsh-bill-visualization**（曾用包名 `dsh-token-ledger` / Token Ledger）是为 **DeepSeek Harness 0.1.3-alpha.2**（最新版，Node Web 模式）适配的本地 Token／费用统计插件：展示今日／本月已定价费用、Token 构成、按模型与会话汇总、CSV/JSON 导出，并可一键导入带工作日峰谷（北京 09:00–12:00、14:00–18:00 ×2、周末全天空闲）的 DeepSeek 官方人民币价。**只读**本地会话：不读 API 密钥、不上传对话、不写会话；只写自己的费率文件 `$DSH_HOME/dsh-bill-visualization/rates.json`。已随包携带 2026-09-10 12:00 生效的 Flash 系列新价（命中 0.02／未命中 1／输出 4，pro 未调价）。
+**dsh-bill-visualization**（曾用包名 `dsh-token-ledger` / Token Ledger）是为 **DeepSeek Harness 0.2.1-rc.2**（最新版，Node Web 模式；同时兼容 0.1.5-rc.2 / 0.1.3-alpha.2）适配，支持 v2–v4 会话格式的本地 Token／费用统计插件：展示今日／本月已定价费用、**月度预算条**、Token 构成、按模型／会话／工作区汇总、**多维筛选**、**请求明细审计**、Token／费用趋势切换、**缓存节省**、CSV/JSON 导出，并可一键导入带工作日峰谷（北京 09:00–12:00、14:00–18:00 ×2、周末全天空闲）的 DeepSeek 官方人民币价。**只读**本地会话：不读 API 密钥、不上传对话、不写会话；只写自己的费率文件 `$DSH_HOME/dsh-bill-visualization/rates.json`。已随包携带 2026-09-10 12:00 生效的 Flash 系列新价（命中 0.02／未命中 1／输出 4，pro 未调价）。
 
 - 界面截图见上方（合成数据或隔离的真实宿主测试配置，非真实账单）。
-- 安装：`pnpm run dsh plugin --profile web add <dsh-bill-visualization-0.1.3.tgz>` → 重启 `pnpm run dsh web` → 侧栏「设置」上方出现 **Token / 费用** 入口（或直接访问 `/dsh-bill-visualization`）。从 0.1.x 升级会保留费率文件。
+- 安装：`pnpm run dsh plugin --profile web add <dsh-bill-visualization-0.2.0.tgz>` → 重启 `pnpm run dsh web` → 侧栏「设置」上方出现 **Token / 费用** 入口（或直接访问 `/dsh-bill-visualization`）。从 0.1.x 升级会保留费率文件。
 - 费率：官方直连默认路由 `deepseek`，点「一键导入官方价」；中转站填自己的价格；同路由不同生效时间可实现历史调价。
 - 计数口径与可选配置见上方英文节；卸载用 `pnpm run dsh plugin --profile web remove dsh-bill-visualization`。
 - 测试：`node --test tests/*.test.js`（36 项通过）。

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeUsage, createFold, foldEvents, summarize, validateRates, toCsv, dayKey, costFor } from '../src/accounting.js';
+import { normalizeUsage, createFold, foldEvents, summarize, validateRates, validateHolidays, toCsv, toCallsCsv, dayKey, costFor } from '../src/accounting.js';
+import { deepseekMultiplier } from '../web/pricing.js';
 import { header, usage, route, message, streamUsage, rate, config, stamp } from './fixtures.js';
 
 function folded(events, inherited = 0) { const s = createFold(header(), inherited); foldEvents(s, events); return { header: s.header, calls: s.calls }; }
@@ -73,4 +74,76 @@ test('rate validation rejects unknown currencies, NaN, invalid zones and duplica
 });
 test('old formats and missing inheritance metadata fail explicitly', () => {
   assert.throws(()=>createFold({...header(),version:1},0)); assert.throws(()=>createFold(header(),undefined));
+});
+test('released session formats are accepted and future ones are read best-effort', () => {
+  for (const version of [2,3,4,5]) {
+    const state = createFold({...header(),version},0);
+    assert.equal(state.header.version,version); assert.deepEqual(state.calls,[]);
+  }
+  assert.throws(()=>createFold({...header(),version:1},0),/expected 2 or newer/);
+  assert.throws(()=>createFold({...header(),version:2.5},0),/expected 2 or newer/);
+});
+test('provider, model and workspace filters narrow range totals and the call log', () => {
+  const a = folded([route(0,'prov','m1'), message(1, usage(10,5))]);
+  const b = folded([route(0,'prov','m2'), message(1, usage(20,5))]);
+  const c = folded([route(0,'other','m1'), message(1, usage(30,5))]);
+  a.header.cwd = '/w1'; b.header.cwd = '/w1'; c.header.cwd = '/w2';
+  const cfg = config([rate({provider:'prov',model:'m1'}),rate({provider:'prov',model:'m2'}),rate({provider:'other',model:'m1'})]);
+  const all = summarize([a,b,c], cfg, { now: stamp });
+  assert.equal(all.total.calls, 3); assert.equal(all.calls.length, 3); assert.equal(all.callTotal, 3);
+  assert.equal(summarize([a,b,c], cfg, { now: stamp, provider:'prov' }).total.calls, 2);
+  assert.equal(summarize([a,b,c], cfg, { now: stamp, model:'m1' }).total.calls, 2);
+  const byWorkspace = summarize([a,b,c], cfg, { now: stamp, workspace:'/w2' });
+  assert.equal(byWorkspace.total.calls, 1); assert.equal(byWorkspace.total.inputTokens, 30);
+  assert.equal(byWorkspace.calls[0].cwd, '/w2'); assert.equal(byWorkspace.workspaces.length, 1);
+  // The calendar cards stay global, exactly like the date range already did.
+  assert.equal(summarize([a,b,c], cfg, { now: stamp, provider:'prov' }).month.calls, 3);
+});
+test('call log is newest first and capped without losing the total count', () => {
+  const early = folded([route(), message(1, usage(1,1), stamp - 3600000)]);
+  const late = folded([route(), message(1, usage(2,2), stamp)]);
+  const s = summarize([early, late], config(), { now: stamp, maxCalls: 1 });
+  assert.equal(s.callTotal, 2); assert.equal(s.calls.length, 1); assert.equal(s.calls[0].time, stamp);
+});
+test('cache savings price cache reads at the hit rate versus the miss rate', () => {
+  const s = summarize([folded([route(), message(1, usage(100,20,{cacheReadTokens:60}))])],
+    config([rate({provider:'test',model:'fixture-model',input:2,cacheRead:0.5})]), { now: stamp });
+  assert.equal(s.total.cacheSaved, 90 / 1000000);
+});
+test('budget settings round-trip with the rate file and reject invalid values', () => {
+  const base = { ...config(), budget: { monthly: 100, alertThreshold: 0.8 } };
+  assert.deepEqual(validateRates(base), base);
+  assert.throws(() => validateRates({ ...config(), budget: { monthly: -1 } }), /月度预算/);
+  assert.throws(() => validateRates({ ...config(), budget: { alertThreshold: 1.5 } }), /预警阈值/);
+  assert.equal(validateRates(config()).budget, undefined);
+});
+test('per-call CSV escapes cells and keeps the priced status', () => {
+  const s = summarize([folded([route(), message(1, usage(100,20))])], config([]), { now: stamp });
+  const csv = toCallsCsv(s);
+  assert.ok(csv.startsWith('\uFEFF'));
+  assert.ok(csv.includes('fixture-model'));
+  assert.ok(csv.includes('unpriced'));
+  assert.ok(!csv.includes('undefined'));
+});
+
+test('public holidays bill at the off-peak rate all day in Beijing time', () => {
+  const peak = Date.parse('2026-09-30T10:00:00+08:00');
+  assert.equal(deepseekMultiplier(peak), 2);
+  assert.equal(deepseekMultiplier(peak, ['2026-09-30']), 1);
+  assert.equal(deepseekMultiplier(peak, ['2026-10-01']), 2);
+  assert.equal(deepseekMultiplier(Date.parse('2026-09-30T20:00:00+08:00'), ['2026-09-30']), 1);
+});
+test('holiday dates validate, sort and de-duplicate', () => {
+  assert.deepEqual(validateHolidays(['2026-10-01','2026-01-01']), ['2026-01-01','2026-10-01']);
+  assert.throws(() => validateHolidays(['2026/10/01']), /YYYY-MM-DD/);
+  assert.throws(() => validateHolidays(['2026-02-30']), /YYYY-MM-DD/);
+  assert.throws(() => validateHolidays(['2026-10-01','2026-10-01']), /重复/);
+  assert.equal(validateHolidays(undefined), undefined);
+});
+test('holidays in the rate config switch a peak call to off-peak pricing', () => {
+  const time = Date.parse('2026-09-30T10:00:00+08:00');
+  const session = folded([route(0,'test','fixture-model'), message(1, usage(1000000,0), time)]);
+  const rates = [rate({ provider:'test', model:'fixture-model', input:1, output:1, cacheRead:0, cacheWrite:0, schedule:'deepseek-weekday-peak-v1' })];
+  assert.equal(summarize([session], config(rates), { now: time }).total.estimatedCost, 2);
+  assert.equal(summarize([session], { ...config(rates), holidays: ['2026-09-30'] }, { now: time }).total.estimatedCost, 1);
 });

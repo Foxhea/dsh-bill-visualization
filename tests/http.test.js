@@ -58,3 +58,18 @@ test('HTML uses self-hosted assets; registration supplies a plain script and a d
   assert.equal((await h.request('/app.js',{method:'HEAD'})).status,200);
   h.effects[0]();assert.equal(h.routes.length,0);h.effects.length=0;
 });
+test('call log export, dimension filters and budget settings round-trip',async t=>{
+  const h=await harness(t), initial=await(await h.request('/rates')).json();
+  const calls=await h.request('/export.calls.csv');
+  assert.equal(calls.status,200);assert.match(calls.headers.get('content-disposition'),/calls\.csv/);
+  const callText=await calls.text();assert.match(callText,/fixture-model/);assert.match(callText,/unpriced/);
+  const q=new URLSearchParams({provider:'test',model:'fixture-model',workspace:'/home/test/project'});
+  const filtered=await(await h.request('/stats?'+q)).json();
+  assert.equal(filtered.total.calls,1);assert.equal(filtered.calls.length,1);assert.equal(filtered.callTotal,1);
+  assert.equal((await(await h.request('/stats?provider=nope')).json()).total.calls,0);
+  const put={method:'PUT',headers:{'content-type':'application/json','x-dsh-bill-visualization':'1'},
+    body:JSON.stringify({...config(),budget:{monthly:50,alertThreshold:0.9},revision:initial.revision})};
+  assert.equal((await h.request('/rates',put)).status,200);
+  assert.deepEqual((await(await h.request('/rates')).json()).budget,{monthly:50,alertThreshold:0.9});
+  const stats=await(await h.request('/stats')).json();assert.deepEqual(stats.budget,{monthly:50,alertThreshold:0.9});
+});

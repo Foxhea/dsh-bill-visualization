@@ -1,6 +1,19 @@
 # 验证记录
 
-日期：2026-09-09。插件：`dsh-bill-visualization@0.1.3`（0.1.2 起自 `dsh-token-ledger` 更名，含官方 Flash 系列 2026-09-10 调价快照更新；0.1.3 为界面改版）。
+日期：2026-10-22。插件：`dsh-bill-visualization@0.2.0`（0.1.2 起自 `dsh-token-ledger` 更名；0.1.3 界面改版；0.1.4 修复 v3；0.2.0 增加预算 / 筛选 / 请求明细 / 成本趋势 / 缓存节省，并支持 v2–v4）。
+
+## 0.2.0 功能更新
+
+- Harness 0.2.1-rc.2 的会话格式为 **v4**；`createFold` 现接受 v2 及更新的整数代次（v2/v3/v4 已验证，更新代次尽力读取），只拒绝更旧结构，避免每次升级 Harness 便全量读取失败。
+- 新增图表能力：月度预算条与预警阈值（随费率文件保存，仅驱动进度条）、请求明细审计（最近 5000 条，可导出 `export.calls.csv`）、供应商 / 模型 / 工作区筛选、Token↔费用趋势切换、缓存节省。
+- 价格：新增 `deepseek-flash`（V4.1-Flash）并与退役别名同价；官方快照核对 2026-09-11。
+- 单元与 HTTP 集成：**43 / 43 通过**（新增筛选、调用日志上限、缓存节省、预算校验、明细 CSV、预算 PUT 往返用例）。
+
+## 0.1.4 会话格式 v3
+
+Harness 0.1.5-rc.2 把逻辑会话格式从 v2 升到 v3（`SESSION_FORMAT_VERSION = 3`），物理日志为 `session.v3.jsonl.zstd`，运行时把历史 v2 日志翻译到 v3 后交给读取方，故读取方看到的 `header.version` 恒为 3。旧版插件 `createFold` 只接受 v2，导致**每个会话都被判为读取失败**（界面表现：用量全 0、大量「读取问题」）。现 `createFold` 同时接受 v2 与 v3；所读事件载荷（`request/header`、`request/context`、`assistant/message`、`assistant/attempt`、`TokenUsage` 字段）两代一致，无需其他改动。单元测试 37/37 通过（当时新增 v2/v3 接受用例；0.2.0 起改为接受 v2 及更新代次）。目标接口依据见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+
+## 0.1.3 界面改版
 
 ## 0.1.3 界面改版
 

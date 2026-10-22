@@ -8,7 +8,7 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
   if (requested === 'dark' || requested === 'light') document.documentElement.dataset.theme = requested;
   const $ = id => document.getElementById(id), number = n => new Intl.NumberFormat('zh-CN').format(n);
   const compact = n => new Intl.NumberFormat('en-US', { notation:'compact', maximumFractionDigits:2 }).format(n);
-  let data, rates, editIndex = -1, sessionLimit = 50, busy = false, dirty = false, rangeInitialized = false;
+  let data, rates, editIndex = -1, sessionLimit = 50, callLimit = 50, chartMode = 'tokens', busy = false, dirty = false, rangeInitialized = false;
   const money = n => new Intl.NumberFormat('zh-CN', { style: 'currency', currency: data?.currency ?? rates?.currency ?? 'CNY', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(n);
   function notice(text = '', success = false) { $('notice').textContent = text; $('notice').hidden = !text; $('notice').classList.toggle('success', success); }
   function el(tag, text, className) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (className) e.className = className; return e; }
@@ -18,7 +18,15 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
     if (!response.ok) throw new Error(result.error || `请求失败 ${response.status}`);
     return result;
   }
-  function query() { const p = new URLSearchParams(); if ($('from').value) p.set('from', $('from').value); if ($('to').value) p.set('to', $('to').value); return '?' + p; }
+  function query() {
+    const p = new URLSearchParams();
+    if ($('from').value) p.set('from', $('from').value);
+    if ($('to').value) p.set('to', $('to').value);
+    if ($('filter-provider').value) p.set('provider', $('filter-provider').value);
+    if ($('filter-model').value) p.set('model', $('filter-model').value);
+    if ($('filter-workspace').value) p.set('workspace', $('filter-workspace').value);
+    return '?' + p;
+  }
   function empty(tbody, columns, text) { const tr = el('tr'), td = el('td', text, 'empty-cell'); td.colSpan = columns; tr.append(td); tbody.append(tr); }
   function costCell(row) { const td = el('td', row.reportedCalls === row.unpricedCalls ? '—' : money(row.estimatedCost));
     if (row.unpricedCalls) td.append(el('span', `${number(row.unpricedCalls)} 次未定价`, 'unpriced'));
@@ -44,8 +52,52 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
     notice(warnings.join('\n'));
     $('connection').textContent = data.errors.length ? '部分数据不可用' : '已连接本机';
     $('connection').classList.toggle('partial',data.errors.length > 0);
-    renderChart(); renderBreakdown(); renderModels(); renderSessions(); renderObserved();
+    renderChart(); renderBreakdown(); renderModels(); renderSessions(); renderCalls(); renderObserved(); renderFilters(); renderBudget();
     $('csv').href = '/dsh-bill-visualization/export.csv' + query(); $('json').href = '/dsh-bill-visualization/export.json' + query();
+    $('csv-calls').href = '/dsh-bill-visualization/export.calls.csv' + query();
+  }
+  function renderBudget() {
+    const budget = data.budget, box = $('budget');
+    if (!budget || !(budget.monthly > 0)) { box.hidden = true; return; }
+    box.hidden = false;
+    const spent = data.month.estimatedCost, ratio = spent / budget.monthly;
+    const fill = $('budget-fill');
+    fill.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
+    fill.dataset.state = ratio >= 1 ? 'over' : ratio >= budget.alertThreshold ? 'warn' : 'ok';
+    $('budget-note').textContent = `月度预算 ${money(budget.monthly)} · 已用 ${(ratio * 100).toFixed(1)}%`
+      + (ratio >= 1 ? ' · 已超出预算' : ratio >= budget.alertThreshold ? ' · 接近预算' : '');
+  }
+  /** Rebuild one filter select while keeping the current choice when it still exists. */
+  function fillSelect(id, values, label) {
+    const select = $(id), current = select.value;
+    select.replaceChildren(el('option', label));
+    select.firstElementChild.value = '';
+    for (const value of values) { const option = el('option', value); option.value = value; select.append(option); }
+    select.value = values.includes(current) ? current : '';
+  }
+  function renderFilters() {
+    fillSelect('filter-provider', [...new Set(data.observed.map(r => r.provider))].sort(), '全部供应商');
+    fillSelect('filter-model', [...new Set(data.observed.map(r => r.model))].sort(), '全部模型');
+    fillSelect('filter-workspace', [...new Set(data.workspaces.map(w => w.cwd))].filter(Boolean).sort(), '全部工作区');
+  }
+  function renderCalls() {
+    const root = $('calls'); root.replaceChildren();
+    $('calls-count').textContent = `共 ${number(data.callTotal)} 条请求`
+      + (data.callTotal > data.calls.length ? `，显示最近 ${number(data.calls.length)} 条` : '');
+    if (!data.calls.length) { empty(root, 8, '所选范围内还没有请求'); $('more-calls').hidden = true; return; }
+    for (const row of data.calls.slice(0, callLimit)) {
+      const tr = el('tr');
+      const route = el('td'); route.append(el('strong', row.model), el('small', row.provider));
+      const session = el('td'); session.append(el('small', row.sessionId)); session.title = row.cwd;
+      const cost = el('td', row.status === 'priced' ? money(row.cost) : '—');
+      if (row.status === 'unpriced') cost.append(el('span', '未定价', 'unpriced'));
+      if (row.status === 'unknown') cost.append(el('span', '用量未知', 'unpriced'));
+      const cells = [row.inputTokens, row.cacheReadTokens, row.cacheWriteTokens, row.outputTokens]
+        .map(v => el('td', v === null || v === undefined ? '—' : number(v)));
+      tr.append(el('td', new Date(row.time).toLocaleString('zh-CN', { timeZone: data.timeZone })), route, session, ...cells, cost);
+      root.append(tr);
+    }
+    $('more-calls').hidden = data.calls.length <= callLimit;
   }
   function renderHealth() {
     $('data-health').hidden = !data.errors.length;
@@ -66,19 +118,21 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
     document.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('selected', b.dataset.range === value));
   }
   function renderChart() {
+    const metric = chartMode === 'cost' ? 'estimatedCost' : 'totalTokens';
     const chart = $('chart'); chart.replaceChildren(); chart.classList.remove('empty');
     if (!data.daily.length) { chart.classList.add('empty'); chart.textContent = '这个范围内还没有调用记录'; return; }
     const end = data.to || data.daily.at(-1).day;
     let start = shiftDay(end, -29); if (data.from && start < data.from) start = data.from;
     const map = new Map(data.daily.map(d => [d.day, d])); const days = [];
     for (let day = start; day <= end; day = shiftDay(day, 1)) days.push(map.get(day) || { day, totalTokens: 0, estimatedCost: 0 });
-    const max = Math.max(1, ...days.map(d => d.totalTokens));
+    const max = Math.max(1e-9, ...days.map(d => d[metric]));
     days.forEach((d, i) => {
       const group = el('div', undefined, 'bar-group'), space = el('div', undefined, 'bar-space');
-      const bar = el('button', undefined, 'bar'); bar.type = 'button'; bar.style.height = `${Math.max(1, 100 * d.totalTokens / max)}%`;
+      const bar = el('button', undefined, 'bar'); bar.type = 'button'; bar.style.height = `${Math.max(1, 100 * d[metric] / max)}%`;
       bar.title = `${d.day} · ${number(d.totalTokens)} Token · 已定价 ${money(d.estimatedCost)}`; bar.setAttribute('aria-label', bar.title);
       space.append(bar); group.append(space, el('span', i === 0 || i === days.length - 1 || (i % 7 === 0 && i < days.length - 3) ? d.day.slice(5) : '', 'bar-label')); chart.append(group);
     });
+    $('chart-legend').textContent = chartMode === 'cost' ? '每日已定价费用' : '每日记录 Token';
   }
   function renderBreakdown() {
     const root = $('breakdown'); root.replaceChildren();
@@ -87,6 +141,8 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
       fill.style.width = `${Math.min(100, 100 * data.total[key] / (data.total.totalTokens || 1))}%`; meter.append(fill);
       row.append(el('span', label), el('strong', number(data.total[key])), meter); root.append(row);
     }
+    $('cache-savings').textContent = data.total.cacheSaved > 0
+      ? `缓存读取按命中价计费，较未命中价节省 ${money(data.total.cacheSaved)}。` : '';
   }
   function renderModels() {
     const root = $('models'); root.replaceChildren();
@@ -110,6 +166,9 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
   }
   function renderRates() {
     $('currency').value = rates.currency; $('timezone').value = rates.timeZone;
+    $('budget-monthly').value = rates.budget?.monthly ?? 0;
+    $('budget-threshold').value = rates.budget?.alertThreshold ?? 0.8;
+    $('holidays').value = (rates.holidays ?? []).join(', ');
     const root = $('rate-rows'); root.replaceChildren();
     if (!rates.rates.length) empty(root, 7, '还没有费率。请填写你的模型实际价格。');
     rates.rates.forEach((row, index) => {
@@ -157,7 +216,7 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
     const buttons = [...$('rates').querySelectorAll('button')]; buttons.forEach(b => b.disabled = true);
     try {
       rates = await api('/rates', { method: 'PUT', headers: { 'content-type':'application/json', 'x-dsh-bill-visualization':'1' }, body:JSON.stringify(next) });
-      resetForm(); renderRates(); await refresh(); notice('费率已保存。统计按生效时间重新估算。', true);
+      resetForm(); renderRates(); await refresh(); notice('已保存。统计按生效时间重新估算。', true);
     } catch (error) {
       notice(error.message);
       if (error.message.includes('另一个页面')) { rates = null; }
@@ -174,9 +233,16 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
     await refresh();
   };
   $('more-sessions').onclick = () => { sessionLimit += 50; renderSessions(); };
+  $('more-calls').onclick = () => { callLimit += 50; renderCalls(); };
+  document.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => {
+    chartMode = button.dataset.chart;
+    document.querySelectorAll('[data-chart]').forEach(b => b.classList.toggle('selected', b === button));
+    renderChart();
+  });
+  for (const id of ['filter-provider', 'filter-model', 'filter-workspace']) $(id).onchange = () => { refresh(); };
   $('cancel-edit').onclick = resetForm;
   $('rate-form').addEventListener('input', () => { dirty = true; });
-  $('currency').onchange = $('timezone').oninput = () => { dirty = true; };
+  $('currency').onchange = $('timezone').oninput = $('budget-monthly').oninput = $('budget-threshold').oninput = $('holidays').oninput = () => { dirty = true; };
   $('rate-form').onsubmit = async event => {
     event.preventDefault(); if (!rates) { notice('请先刷新费率'); return; }
     const row = { provider: $('provider').value.trim(), model: $('model').value.trim(), effectiveFrom: new Date($('effective').value).toISOString() };
@@ -188,7 +254,10 @@ import { DEEPSEEK_PRICING, officialDeepseekRates, mergeOfficialRates } from './p
   $('save-general').onclick = async () => {
     if (!rates) { notice('请先刷新费率'); return; }
     if (rates.rates.length && $('currency').value !== rates.currency) { notice('已有费率时不能直接切换币种。请先下载费率备份，再清空费率后切换。'); return; }
-    await save({ ...rates, currency: $('currency').value, timeZone: $('timezone').value });
+    const monthly = Number($('budget-monthly').value) || 0;
+    const alertThreshold = Number($('budget-threshold').value) || 0.8;
+    const holidays = $('holidays').value.split(/[\s,，]+/).map(v => v.trim()).filter(Boolean);
+    await save({ ...rates, currency: $('currency').value, timeZone: $('timezone').value, budget: { monthly, alertThreshold }, holidays });
   };
   $('backup-rates').onclick = () => {
     if (!rates) return; const { revision, ...backup } = rates;

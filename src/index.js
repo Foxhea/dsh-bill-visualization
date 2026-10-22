@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { UsageReader } from './reader.js';
 import { RatesStore } from './rates-store.js';
-import { summarize, toCsv, validateRates } from './accounting.js';
+import { SUPPORTED_SESSION_FORMATS, summarize, toCallsCsv, toCsv, validateRates } from './accounting.js';
 
 export const name = 'dsh-bill-visualization';
 export const inject = ['webServer', 'connection', 'sessionPersistence'];
@@ -29,7 +29,7 @@ function validDate(value) {
 
 async function bodyJson(req) {
   if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json' || req.headers['x-dsh-bill-visualization'] !== '1') {
-    const error = new Error('需要 JSON 请求及 X-Token-Ledger 标头'); error.status = 415; throw error;
+    const error = new Error('需要 JSON 请求及 X-Bill-Visualization 标头'); error.status = 415; throw error;
   }
   const chunks = []; let size = 0;
   // data listeners let us answer 413 without async-iterator destruction of the socket.
@@ -71,7 +71,7 @@ export function resolveOptions(config = {}) {
 /** Host-only plugin: public index-inject + authenticated routes; zero browser module imports. */
 export async function apply(ctx, config = {}) {
   if (typeof ctx.sessionPersistence.open !== 'function' || typeof ctx.connection.requestRejection !== 'function') {
-    throw new Error('dsh-bill-visualization 需要 Harness 0.1.3-alpha.2 的 SessionHandle 和 Connection 接口');
+    throw new Error('dsh-bill-visualization 需要 Harness 0.1.3-alpha.2 / 0.1.5-rc.2 的 SessionHandle 和 Connection 接口');
   }
   const options = resolveOptions(config);
   const store = new RatesStore(join(options.dataDir, 'rates.json'));
@@ -80,12 +80,16 @@ export async function apply(ctx, config = {}) {
   const assets = new Map();
   for (const [route, [file, mime]] of FILES) assets.set(route, { content: await readFile(new URL(`../web/${file}`, import.meta.url)), mime });
 
+  /** Read one bounded free-text filter; empty means "no filter". */
+  const filterValue = (url, name, max = 300) => (url.searchParams.get(name) ?? '').trim().slice(0, max);
+
   async function snapshot(url) {
     const from = url.searchParams.get('from') ?? '', to = url.searchParams.get('to') ?? '';
     if (!validDate(from) || !validDate(to) || (from && to && from > to)) throw Object.assign(new Error('日期范围无效'), { status: 400 });
+    const provider = filterValue(url, 'provider'), model = filterValue(url, 'model', 500), workspace = filterValue(url, 'workspace', 1024);
     const data = await reader.scan();
-    return { ...summarize(data.sessions, store.current, { from, to, errors: data.errors }),
-      scanAt: data.at, pluginVersion: '0.1.3', targetHarness: '0.1.3-alpha.2' };
+    return { ...summarize(data.sessions, store.current, { from, to, provider, model, workspace, errors: data.errors }),
+      scanAt: data.at, pluginVersion: '0.2.0', targetHarness: '0.2.1-rc.2', sessionFormats: SUPPORTED_SESSION_FORMATS };
   }
 
   const handler = async (req, res) => {
@@ -112,10 +116,13 @@ export async function apply(ctx, config = {}) {
         }
         res.setHeader('allow', 'GET, PUT'); send(res, 405, { error: '不支持此方法' }); return;
       }
-      if (path === `${BASE}/stats` || path === `${BASE}/export.csv` || path === `${BASE}/export.json`) {
+      if (path === `${BASE}/stats` || path === `${BASE}/export.csv` || path === `${BASE}/export.json` || path === `${BASE}/export.calls.csv`) {
         if (req.method !== 'GET') { res.setHeader('allow', 'GET'); send(res, 405, { error: '不支持此方法' }); return; }
         const data = await snapshot(url);
-        if (path.endsWith('export.csv')) {
+        if (path.endsWith('export.calls.csv')) {
+          res.setHeader('content-disposition', 'attachment; filename="dsh-bill-visualization-calls.csv"');
+          send(res, 200, toCallsCsv(data), 'text/csv; charset=utf-8');
+        } else if (path.endsWith('export.csv')) {
           res.setHeader('content-disposition', 'attachment; filename="dsh-bill-visualization.csv"');
           send(res, 200, toCsv(data), 'text/csv; charset=utf-8');
         } else {

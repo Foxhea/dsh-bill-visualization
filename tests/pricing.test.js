@@ -4,9 +4,9 @@ import { DEEPSEEK_PRICING, deepseekMultiplier, officialDeepseekRates, mergeOffic
 import { costFor, validateRates, normalizeUsage } from '../src/accounting.js';
 import { config, usage } from './fixtures.js';
 
-test('official CNY snapshot includes only the three listed API model IDs', () => {
+test('official CNY snapshot lists the current Flash id plus its retired aliases', () => {
   assert.deepEqual(officialDeepseekRates().map(r=>[r.model,r.input,r.cacheRead,r.output]),[
-    ['deepseek-v4-flash',1,0.02,4],['deepseek-v4-pro',4.5,0.15,13.5],['deepseek-v4-flash-vision-exp',1,0.02,4],
+    ['deepseek-flash',1,0.02,4],['deepseek-v4-flash',1,0.02,4],['deepseek-v4-flash-vision-exp',1,0.02,4],['deepseek-v4-pro',4.5,0.15,13.5],
   ]);
 });
 test('weekday peak uses half-open 09–12 and 14–18 Beijing windows', () => {
@@ -32,8 +32,8 @@ test('snapshot never backfills before its chosen start or prices unknown models 
 });
 test('reimport preserves custom rows at the same instant and adds no duplicates', () => {
   const incoming=officialDeepseekRates(), custom={...incoming[0],input:123};
-  const merged=mergeOfficialRates([custom],incoming);
-  assert.equal(merged.length,3);assert.equal(merged[0].input,123);assert.equal(mergeOfficialRates(merged,incoming).length,3);
+  const merged=mergeOfficialRates([custom],incoming), total=incoming.length;
+  assert.equal(merged.length,total);assert.equal(merged[0].input,123);assert.equal(mergeOfficialRates(merged,incoming).length,total);
 });
 test('rate validation round-trips schedule and source; unknown schedules fail', () => {
   const cfg=config(officialDeepseekRates());assert.deepEqual(validateRates(cfg),cfg);
